@@ -1,76 +1,85 @@
 DESCRIPTION
 -----------
 
-re2c is a free and open-source lexer generator for C and C++.
+re2php (forked from re2c) is a free and open-source lexer generator for PHP.
 
 Its main goal is generating fast lexers: at least as fast as their reasonably
 optimized hand-coded counterparts. Instead of using traditional table-driven
-approach, re2c encodes the generated finite state automata directly in the form
-of conditional jumps and comparisons. The resulting programs are faster and
-often smaller than their table-driven analogues, and they are much easier to
-debug and understand. re2c applies quite a few optimizations in order to speed
-up and compress the generated code.
+approach, re2php encodes the generated finite state automata directly in the
+form of conditional jumps and comparisons. The resulting programs are faster
+and often smaller than their table-driven analogues, and they are much easier
+to debug and understand. re2php applies quite a few optimizations in order to
+speed up and compress the generated code.
 
 Another distinctive feature is its flexible interface: instead of assuming a
-fixed program template, re2c lets the programmer write most of the interface
+fixed program template, re2php lets the programmer write most of the interface
 code and adapt the generated lexer to any particular environment.
 
 
-DOCUMENTATION
--------------
+DOCKER
+------
 
-Official re2c website is [re2c.org](http://re2c.org).
+You can use the docker prebuild image to quickly use re2php.
 
-
-DOWNLOAD
---------
-
-Release tarballs: https://github.com/skvadrik/re2c/releases
-
-Source code:
+## bash
 
 ```
-$ git clone https://github.com/skvadrik/re2c.git
-$ git clone https://git.code.sf.net/p/re2c/code-git
+docker run --rm -it -v $PWD:/src -w /src davekok/re2php file.y.php -o file.php
 ```
 
-Github is the main repo, sourceforge is a mirror and can be slightly outdated.
-
-
-BUILD
------
-
-The simplest possible way to build re2c is this:
+## Powershell
 
 ```
-$ ./configure [--prefix=<prefix>]
-$ make
-$ make install
-```
-See the [official documantation](http://re2c.org/install/install.html) for full details on more sophisticated build types.
-If you want to build from git, you will first need to generate autotools files:
-
-```
-$ ./autogen.sh
+docker run --rm -it -v "${PWD}:/src" -w /src davekok/re2php file.y.php -o file.php
 ```
 
+## Windows Command
 
-MAILING LISTS
--------------
+```
+docker run --rm -it -v "%CD%:/src" -w /src davekok/re2php file.y.php -o file.php
+```
 
-- re2c-general@lists.sourceforge.net
-- re2c-devel@lists.sourceforge.net
+EXAMPLE
+-------
 
-You are welcome to ask for help or share your thoughts and ideas.
+A simple example
 
+```
+<?php
+
+/*!re2c
+    digit  = [0-9];
+    number = digit+;
+*/
+
+function lex(string $YYBUFFER, int $YYCURSOR = 0): int
+{
+    $YYMARKER = 0;
+    /*!re2c
+    re2c:yyfill:enable  = 0;
+
+    * { return 1; }
+
+    number {
+        printf("number\n");
+        return 0;
+    }
+
+    */
+}
+
+lex("1024");
+lex(";]");
+```
 
 BUGS
 ----
-Please report any bugs and send feature requests to https://github.com/skvadrik/re2c/issues.
+Please report any bugs and send feature requests to https://github.com/davekok/re2php/issues.
 
 
 AUTHORS
 -------
 Re2c was originally written by Peter Bumbulis <peter@csg.uwaterloo.ca>.
 Since then many people contributed to the project.
-Current maintainers are Ulya Trofimovich <skvadrik@gmail.com> and Dan Nuffer <nuffer@users.sourceforge.net>.
+Re2c current maintainers are Ulya Trofimovich <skvadrik@gmail.com> and Dan Nuffer <nuffer@users.sourceforge.net>.
+Re2php tries to remain as much a possible compatible with the upstream code base.
