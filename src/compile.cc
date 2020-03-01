@@ -132,11 +132,11 @@ void compile(Scanner &input, Output &output, Opt &opts)
 
     output.header_mode(1);
     output.new_block(opts, loc0);
-    output.wversion_time();
+    // output.wversion_time();
 
     output.header_mode(0);
     output.new_block(opts, loc0);
-    output.wversion_time();
+    // output.wversion_time();
     output.wdelay_line_info_input(loc0);
 
     if (globopts->target == TARGET_SKELETON) {

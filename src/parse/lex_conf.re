@@ -113,6 +113,7 @@ void Scanner::lex_conf(Opt &opts)
     }
     "variable:yytarget" { opts.set_yytarget (lex_conf_string ()); return; }
 
+    "define:YYBUFFER"    { opts.set_yybuffer    (lex_conf_string ()); return; }
     "define:YYCURSOR"    { opts.set_yycursor    (lex_conf_string ()); return; }
     "define:YYMARKER"    { opts.set_yymarker    (lex_conf_string ()); return; }
     "define:YYCTXMARKER" { opts.set_yyctxmarker (lex_conf_string ()); return; }

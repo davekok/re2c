@@ -80,6 +80,7 @@ void mutopt_t::fix(const conopt_t *globopts)
             yybm = Opt::baseopt.yybm;
             yytarget = Opt::baseopt.yytarget;
             input_api = Opt::baseopt.input_api;
+            yybuffer = Opt::baseopt.yybuffer;
             yycursor = Opt::baseopt.yycursor;
             yymarker = Opt::baseopt.yymarker;
             yyctxmarker = Opt::baseopt.yyctxmarker;
@@ -174,6 +175,7 @@ void mutopt_t::fix(const conopt_t *globopts)
     }
     if (input_api != INPUT_DEFAULT)
     {
+        yybuffer = Opt::baseopt.yybuffer;
         yycursor = Opt::baseopt.yycursor;
         yymarker = Opt::baseopt.yymarker;
         yyctxmarker = Opt::baseopt.yyctxmarker;
@@ -301,6 +303,7 @@ void Opt::reset_mapCodeName ()
     set_yycondtype(Opt::baseopt.yycondtype);
     set_yyctxmarker(Opt::baseopt.yyctxmarker);
     set_yyctype(Opt::baseopt.yyctype);
+    set_yybuffer(Opt::baseopt.yybuffer);
     set_yycursor(Opt::baseopt.yycursor);
     set_yydebug(Opt::baseopt.yydebug);
     set_yylessthan(Opt::baseopt.yylessthan);

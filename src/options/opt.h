@@ -133,33 +133,34 @@ const uint32_t NOEOF = ~0u - 1;
     MUTOPT (std::string, indString, "\t") \
     /* input API */ \
     MUTOPT (input_api_t, input_api, INPUT_DEFAULT) \
-    MUTOPT (std::string, yycursor, "YYCURSOR") \
-    MUTOPT (std::string, yymarker, "YYMARKER") \
-    MUTOPT (std::string, yyctxmarker, "YYCTXMARKER") \
-    MUTOPT (std::string, yylimit, "YYLIMIT") \
-    MUTOPT (std::string, yypeek, "YYPEEK") \
-    MUTOPT (std::string, yyskip, "YYSKIP") \
-    MUTOPT (std::string, yybackup, "YYBACKUP") \
-    MUTOPT (std::string, yybackupctx, "YYBACKUPCTX") \
-    MUTOPT (std::string, yyrestore, "YYRESTORE") \
-    MUTOPT (std::string, yyrestorectx, "YYRESTORECTX") \
-    MUTOPT (std::string, yyrestoretag, "YYRESTORETAG") \
-    MUTOPT (std::string, yylessthan, "YYLESSTHAN") \
-    MUTOPT (std::string, yystagn, "YYSTAGN") \
-    MUTOPT (std::string, yystagp, "YYSTAGP") \
-    MUTOPT (std::string, yystagpd, "YYSTAGPD") \
-    MUTOPT (std::string, yymtagn, "YYMTAGN") \
-    MUTOPT (std::string, yymtagp, "YYMTAGP") \
-    MUTOPT (std::string, yymtagpd, "YYMTAGPD") \
+    MUTOPT (std::string, yybuffer, "$YYBUFFER") \
+    MUTOPT (std::string, yycursor, "$YYCURSOR") \
+    MUTOPT (std::string, yymarker, "$YYMARKER") \
+    MUTOPT (std::string, yyctxmarker, "$YYCTXMARKER") \
+    MUTOPT (std::string, yylimit, "$YYLIMIT") \
+    MUTOPT (std::string, yypeek, "$YYPEEK") \
+    MUTOPT (std::string, yyskip, "$YYSKIP") \
+    MUTOPT (std::string, yybackup, "$YYBACKUP") \
+    MUTOPT (std::string, yybackupctx, "$YYBACKUPCTX") \
+    MUTOPT (std::string, yyrestore, "$YYRESTORE") \
+    MUTOPT (std::string, yyrestorectx, "$YYRESTORECTX") \
+    MUTOPT (std::string, yyrestoretag, "$YYRESTORETAG") \
+    MUTOPT (std::string, yylessthan, "$YYLESSTHAN") \
+    MUTOPT (std::string, yystagn, "$YYSTAGN") \
+    MUTOPT (std::string, yystagp, "$YYSTAGP") \
+    MUTOPT (std::string, yystagpd, "$YYSTAGPD") \
+    MUTOPT (std::string, yymtagn, "$YYMTAGN") \
+    MUTOPT (std::string, yymtagp, "$YYMTAGP") \
+    MUTOPT (std::string, yymtagpd, "$YYMTAGPD") \
     /* #line directives */ \
-    MUTOPT (bool, iFlag, false) \
+    MUTOPT (bool, iFlag, true) \
     /* debug */ \
     MUTOPT (bool, dFlag, false) \
     MUTOPT (std::string, yydebug, "YYDEBUG") \
     /* yych */ \
     MUTOPT (std::string, yyctype, "YYCTYPE") \
-    MUTOPT (std::string, yych, "yych") \
-    MUTOPT (bool, bEmitYYCh, true) \
+    MUTOPT (std::string, yych, "$yych") \
+    MUTOPT (bool, bEmitYYCh, false) \
     MUTOPT (bool, yychConversion, false) \
     /* YYFILL */ \
     MUTOPT (std::string, fill, "YYFILL") \

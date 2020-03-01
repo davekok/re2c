@@ -11,7 +11,7 @@ namespace re2c {
 std::string output_expr_peek(const opt_t *opts)
 {
     return opts->input_api == INPUT_DEFAULT
-        ? "*" + opts->yycursor
+        ? opts->yybuffer + "[" + opts->yycursor + "]"
         : opts->yypeek + " ()";
 }
 
@@ -49,7 +49,7 @@ void output_peek(std::ostream &o, uint32_t ind, const opt_t *opts)
     if (opts->input_api == INPUT_CUSTOM) {
         o << opts->yypeek << " ()";
     } else {
-        o << "*" << opts->yycursor;
+        o << opts->yybuffer << "[" << opts->yycursor << "]";
     }
     o << ";\n";
 }
@@ -80,14 +80,14 @@ void output_skip_peek(std::ostream &o, uint32_t ind, const opt_t *opts)
 {
     DASSERT(opts->input_api == INPUT_DEFAULT);
     o << indent(ind, opts->indString) << opts->yych << " = "
-        << yych_conv(opts) << "*++" << opts->yycursor << ";\n";
+        << yych_conv(opts) << opts->yybuffer << "[++" << opts->yycursor << "];\n";
 }
 
 void output_peek_skip(std::ostream &o, uint32_t ind, const opt_t *opts)
 {
     DASSERT(opts->input_api == INPUT_DEFAULT);
     o << indent(ind, opts->indString) << opts->yych << " = "
-        << yych_conv(opts) << "*" << opts->yycursor << "++;\n";
+        << yych_conv(opts) << opts->yybuffer << "[" << opts->yycursor << "++];\n";
 }
 
 void output_skip_backup(std::ostream &o, uint32_t ind, const opt_t *opts)
@@ -108,8 +108,8 @@ void output_backup_peek(std::ostream &o, uint32_t ind, const opt_t *opts)
 {
     DASSERT(opts->input_api == INPUT_DEFAULT);
     o << indent(ind, opts->indString) << opts->yych << " = "
-        << yych_conv(opts) << "*(" << opts->yymarker << " = "
-        << opts->yycursor << ");\n";
+        << yych_conv(opts) << opts->yybuffer << "[" << opts->yymarker << " = "
+        << opts->yycursor << "];\n";
 }
 
 void output_skip_backup_peek(std::ostream &o, uint32_t ind, const opt_t *opts)
@@ -124,8 +124,8 @@ void output_backup_peek_skip(std::ostream &o, uint32_t ind, const opt_t *opts)
 {
     DASSERT(opts->input_api == INPUT_DEFAULT);
     o << indent(ind, opts->indString) << opts->yych << " = "
-        << yych_conv(opts) << "*(" << opts->yymarker << " = "
-        << opts->yycursor << "++);\n";
+        << yych_conv(opts) << opts->yybuffer << "[" << opts->yymarker << " = "
+        << opts->yycursor << "++];\n";
 }
 
 } // end namespace re2c
