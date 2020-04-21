@@ -88,10 +88,10 @@ const uint32_t NOEOF = ~0u - 1;
     MUTOPT (bool, bCaseInverted, false) \
     MUTOPT (empty_class_policy_t, empty_class_policy, EMPTY_CLASS_MATCH_EMPTY) \
     /* conditions */ \
-    MUTOPT (std::string, yycondtype, "YYCONDTYPE") \
-    MUTOPT (std::string, cond_get, "YYGETCONDITION") \
+    MUTOPT (std::string, yycondtype, "int") \
+    MUTOPT (std::string, cond_get, "$this->getCondition") \
     MUTOPT (bool, cond_get_naked, false) \
-    MUTOPT (std::string, cond_set, "YYSETCONDITION" ) \
+    MUTOPT (std::string, cond_set, "$this->setCondition" ) \
     MUTOPT (std::string, cond_set_arg, "@@" ) \
     MUTOPT (bool, cond_set_naked, false ) \
     MUTOPT (std::string, yyctable, "yyctable") \
@@ -102,14 +102,14 @@ const uint32_t NOEOF = ~0u - 1;
     MUTOPT (std::string, condGoto, "goto @@;") \
     MUTOPT (std::string, condGotoParam, "@@") \
     /* states */ \
-    MUTOPT (std::string, state_get, "YYGETSTATE") \
+    MUTOPT (std::string, state_get, "$this->getState") \
     MUTOPT (bool, state_get_naked, false) \
-    MUTOPT (std::string, state_set, "YYSETSTATE") \
+    MUTOPT (std::string, state_set, "$this->setState") \
     MUTOPT (std::string, state_set_arg, "@@") \
     MUTOPT (bool, state_set_naked, false) \
-    MUTOPT (std::string, yyfilllabel, "yyFillLabel") \
-    MUTOPT (std::string, yynext, "yyNext") \
-    MUTOPT (std::string, yyaccept, "yyaccept") \
+    MUTOPT (std::string, yyfilllabel, "$this->yyFillLabel") \
+    MUTOPT (std::string, yynext, "$this->yyNext") \
+    MUTOPT (std::string, yyaccept, "$this->yyAccept") \
     MUTOPT (bool, bUseStateAbort, false) \
     MUTOPT (bool, bUseStateNext, false) \
     /* tags */ \
@@ -133,37 +133,37 @@ const uint32_t NOEOF = ~0u - 1;
     MUTOPT (std::string, indString, "\t") \
     /* input API */ \
     MUTOPT (input_api_t, input_api, INPUT_DEFAULT) \
-    MUTOPT (std::string, yybuffer, "$YYBUFFER") \
-    MUTOPT (std::string, yycursor, "$YYCURSOR") \
-    MUTOPT (std::string, yymarker, "$YYMARKER") \
-    MUTOPT (std::string, yyctxmarker, "$YYCTXMARKER") \
-    MUTOPT (std::string, yylimit, "$YYLIMIT") \
-    MUTOPT (std::string, yypeek, "$YYPEEK") \
-    MUTOPT (std::string, yyskip, "$YYSKIP") \
-    MUTOPT (std::string, yybackup, "$YYBACKUP") \
-    MUTOPT (std::string, yybackupctx, "$YYBACKUPCTX") \
-    MUTOPT (std::string, yyrestore, "$YYRESTORE") \
-    MUTOPT (std::string, yyrestorectx, "$YYRESTORECTX") \
-    MUTOPT (std::string, yyrestoretag, "$YYRESTORETAG") \
-    MUTOPT (std::string, yylessthan, "$YYLESSTHAN") \
-    MUTOPT (std::string, yystagn, "$YYSTAGN") \
-    MUTOPT (std::string, yystagp, "$YYSTAGP") \
-    MUTOPT (std::string, yystagpd, "$YYSTAGPD") \
-    MUTOPT (std::string, yymtagn, "$YYMTAGN") \
-    MUTOPT (std::string, yymtagp, "$YYMTAGP") \
-    MUTOPT (std::string, yymtagpd, "$YYMTAGPD") \
+    MUTOPT (std::string, yybuffer, "$this->buffer") \
+    MUTOPT (std::string, yycursor, "$this->cursor") \
+    MUTOPT (std::string, yymarker, "$this->marker") \
+    MUTOPT (std::string, yyctxmarker, "$this->ctxmarker") \
+    MUTOPT (std::string, yylimit, "$this->limit") \
+    MUTOPT (std::string, yypeek, "$this->peek") \
+    MUTOPT (std::string, yyskip, "$this->skip") \
+    MUTOPT (std::string, yybackup, "$this->backup") \
+    MUTOPT (std::string, yybackupctx, "$this->backupctx") \
+    MUTOPT (std::string, yyrestore, "$this->restore") \
+    MUTOPT (std::string, yyrestorectx, "$this->restorectx") \
+    MUTOPT (std::string, yyrestoretag, "$this->restoretag") \
+    MUTOPT (std::string, yylessthan, "$this->lessthan") \
+    MUTOPT (std::string, yystagn, "$this->stagn") \
+    MUTOPT (std::string, yystagp, "$this->stagp") \
+    MUTOPT (std::string, yystagpd, "$this->stagpd") \
+    MUTOPT (std::string, yymtagn, "$this->mtagn") \
+    MUTOPT (std::string, yymtagp, "$this->mtagp") \
+    MUTOPT (std::string, yymtagpd, "$this->mtagpd") \
     /* #line directives */ \
     MUTOPT (bool, iFlag, true) \
     /* debug */ \
     MUTOPT (bool, dFlag, false) \
-    MUTOPT (std::string, yydebug, "YYDEBUG") \
+    MUTOPT (std::string, yydebug, "$this->debug") \
     /* yych */ \
-    MUTOPT (std::string, yyctype, "YYCTYPE") \
+    MUTOPT (std::string, yyctype, "string") \
     MUTOPT (std::string, yych, "$yych") \
     MUTOPT (bool, bEmitYYCh, false) \
     MUTOPT (bool, yychConversion, false) \
     /* YYFILL */ \
-    MUTOPT (std::string, fill, "YYFILL") \
+    MUTOPT (std::string, fill, "$this->fill") \
     MUTOPT (bool, fill_use, true) \
     MUTOPT (bool, fill_check, true) \
     MUTOPT (std::string, fill_arg, "@@") \
