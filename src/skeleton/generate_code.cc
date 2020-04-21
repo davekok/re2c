@@ -18,515 +18,789 @@
 
 namespace re2c {
 
-static void exact_uint(Output &o, size_t width)
+static void exact_uint(Scratchbuf &o, size_t width)
 {
     if (width == sizeof(char)) {
-        o.ws("unsigned char");
-    } else if (width == sizeof(short)) {
-        o.ws("unsigned short");
-    } else if (width == sizeof(int)) {
-        o.ws("unsigned int");
-    } else if (width == sizeof(long)) {
-        o.ws("unsigned long");
-    } else {
-        o.ws("uint").wu64(width * 8).ws("_t");
+        o.cstr("unsigned char");
+    }
+    else if (width == sizeof(short)) {
+        o.cstr("unsigned short");
+    }
+    else if (width == sizeof(int)) {
+        o.cstr("unsigned int");
+    }
+    else if (width == sizeof(long)) {
+        o.cstr("unsigned long");
+    }
+    else {
+        o.cstr("uint").u64(width * 8).cstr("_t");
     }
 }
 
-static void from_le(Output &o, uint32_t ind, size_t size, const char *expr)
+static void from_le(Output &output, CodeStmts *code, const char *expr, size_t size)
 {
-    o.ws("\n").wind(ind).ws("/* from little-endian to host-endian */");
-    o.ws("\n").wind(ind).ws("unsigned char *p = (unsigned char*)&").ws(expr).ws(";");
-    o.ws("\n").wind(ind).ws(expr).ws(" = p[0]");
+    code_alc_t &alc = output.allocator;
+    Scratchbuf &o = output.scratchbuf;
+
+    append_stmt(code, code_stmt_text(alc, "/* from little-endian to host-endian */"));
+    o.cstr("unsigned char *p = (unsigned char*)&").cstr(expr).cstr(";");
+    append_stmt(code, code_stmt_text(alc, o.flush()));
+    o.cstr(expr).cstr(" = p[0]");
     for (uint32_t i = 1; i < size; ++i) {
-        o.ws(" + (p[").wu32(i).ws("] << ").wu32(i * 8).ws("u)");
+        o.cstr(" + (p[").u32(i).cstr("] << ").u32(i * 8).cstr("u)");
     }
-    o.ws(";");
+    o.cstr(";");
+    append_stmt(code, code_stmt_text(alc, o.flush()));
 }
 
-void emit_prolog(Output &o)
+CodeStmt *emit_skeleton_prolog(Output &output)
 {
-    o.ws("\n#include <stddef.h> /* size_t */");
-    o.ws("\n#include <stdio.h>");
-    o.ws("\n#include <stdlib.h> /* malloc, free */");
-    o.ws("\n#include <string.h> /* memcpy */");
-    o.ws("\n");
-    o.ws("\nstatic void *read_file");
-    o.ws("\n").wind(1).ws("( const char *fname");
-    o.ws("\n").wind(1).ws(", size_t unit");
-    o.ws("\n").wind(1).ws(", size_t padding");
-    o.ws("\n").wind(1).ws(", size_t *pfsize");
-    o.ws("\n").wind(1).ws(")");
-    o.ws("\n{");
-    o.ws("\n").wind(1).ws("void *buffer = NULL;");
-    o.ws("\n").wind(1).ws("size_t fsize = 0;");
-    o.ws("\n");
-    o.ws("\n").wind(1).ws("/* open file */");
-    o.ws("\n").wind(1).ws("FILE *f = fopen(fname, \"rb\");");
-    o.ws("\n").wind(1).ws("if(f == NULL) {");
-    o.ws("\n").wind(2).ws("goto error;");
-    o.ws("\n").wind(1).ws("}");
-    o.ws("\n");
-    o.ws("\n").wind(1).ws("/* get file size */");
-    o.ws("\n").wind(1).ws("fseek(f, 0, SEEK_END);");
-    o.ws("\n").wind(1).ws("fsize = (size_t) ftell(f) / unit;");
-    o.ws("\n").wind(1).ws("fseek(f, 0, SEEK_SET);");
-    o.ws("\n");
-    o.ws("\n").wind(1).ws("/* allocate memory for file and padding */");
-    o.ws("\n").wind(1).ws("buffer = malloc(unit * (fsize + padding));");
-    o.ws("\n").wind(1).ws("if (buffer == NULL) {");
-    o.ws("\n").wind(2).ws("goto error;");
-    o.ws("\n").wind(1).ws("}");
-    o.ws("\n");
-    o.ws("\n").wind(1).ws("/* read the whole file in memory */");
-    o.ws("\n").wind(1).ws("if (fread(buffer, unit, fsize, f) != fsize) {");
-    o.ws("\n").wind(2).ws("goto error;");
-    o.ws("\n").wind(1).ws("}");
-    o.ws("\n");
-    o.ws("\n").wind(1).ws("fclose(f);");
-    o.ws("\n").wind(1).ws("*pfsize = fsize;");
-    o.ws("\n").wind(1).ws("return buffer;");
-    o.ws("\n");
-    o.ws("\nerror:");
-    o.ws("\n").wind(1).ws("fprintf(stderr, \"error: cannot read file '%s'\\n\", fname);");
-    o.ws("\n").wind(1).ws("free(buffer);");
-    o.ws("\n").wind(1).ws("if (f != NULL) {");
-    o.ws("\n").wind(2).ws("fclose(f);");
-    o.ws("\n").wind(1).ws("}");
-    o.ws("\n").wind(1).ws("return NULL;");
-    o.ws("\n}");
-    o.ws("\n");
+    code_alc_t &alc = output.allocator;
+    CodeText if_cond;
+    CodeStmts *if_code;
+
+    CodeStmts *code = code_stmts(alc);
+
+    append_stmt(code, code_stmt_textraw(alc, ""));
+    append_stmt(code, code_stmt_textraw(alc, "#include <stddef.h> /* size_t */"));
+    append_stmt(code, code_stmt_textraw(alc, "#include <stdio.h>"));
+    append_stmt(code, code_stmt_textraw(alc, "#include <stdlib.h> /* malloc, free */"));
+    append_stmt(code, code_stmt_textraw(alc, "#include <string.h> /* memcpy */"));
+    append_stmt(code, code_stmt_textraw(alc, ""));
+
+    append_stmt(code, code_stmt_text(alc, "static void *read_file"));
+
+    CodeStmts *params = code_stmts(alc);
+    append_stmt(params, code_stmt_text(alc, "( const char *fname"));
+    append_stmt(params, code_stmt_text(alc, ", size_t unit"));
+    append_stmt(params, code_stmt_text(alc, ", size_t padding"));
+    append_stmt(params, code_stmt_text(alc, ", size_t *pfsize"));
+    append_stmt(params, code_stmt_text(alc, ")"));
+    append_stmt(code, code_block(alc, params, CodeBlock::INDENTED));
+
+    CodeStmts *block = code_stmts(alc);
+
+    append_stmt(block, code_stmt_text(alc, "void *buffer = NULL;"));
+    append_stmt(block, code_stmt_text(alc, "size_t fsize = 0;"));
+
+    append_stmt(block, code_stmt_textraw(alc, ""));
+
+    append_stmt(block, code_stmt_text(alc, "/* open file */"));
+    append_stmt(block, code_stmt_text(alc, "FILE *f = fopen(fname, \"rb\");"));
+    if_code = code_stmts(alc);
+    append_stmt(if_code, code_stmt_text(alc, "goto error;"));
+    append_stmt(block, code_stmt_if_then_else(alc, "f == NULL", if_code, NULL, false));
+
+    append_stmt(block, code_stmt_textraw(alc, ""));
+
+    append_stmt(block, code_stmt_text(alc, "/* get file size */"));
+    append_stmt(block, code_stmt_text(alc, "fseek(f, 0, SEEK_END);"));
+    append_stmt(block, code_stmt_text(alc, "fsize = (size_t) ftell(f) / unit;"));
+    append_stmt(block, code_stmt_text(alc, "fseek(f, 0, SEEK_SET);"));
+
+    append_stmt(block, code_stmt_textraw(alc, ""));
+
+    append_stmt(block, code_stmt_text(alc, "/* allocate memory for file and padding */"));
+    append_stmt(block, code_stmt_text(alc, "buffer = malloc(unit * (fsize + padding));"));
+    if_cond = "buffer == NULL";
+    if_code = code_stmts(alc);
+    append_stmt(if_code, code_stmt_text(alc, "goto error;"));
+    append_stmt(block, code_stmt_if_then_else(alc, if_cond, if_code, NULL, false));
+
+    append_stmt(block, code_stmt_textraw(alc, ""));
+
+    append_stmt(block, code_stmt_text(alc, "/* read the whole file in memory */"));
+    if_cond = "fread(buffer, unit, fsize, f) != fsize";
+    if_code = code_stmts(alc);
+    append_stmt(if_code, code_stmt_text(alc, "goto error;"));
+    append_stmt(block, code_stmt_if_then_else(alc, if_cond, if_code, NULL, false));
+
+    append_stmt(block, code_stmt_textraw(alc, ""));
+
+    append_stmt(block, code_stmt_text(alc, "fclose(f);"));
+    append_stmt(block, code_stmt_text(alc, "*pfsize = fsize;"));
+    append_stmt(block, code_stmt_text(alc, "return buffer;"));
+
+    append_stmt(block, code_stmt_textraw(alc, ""));
+    append_stmt(block, code_stmt_textraw(alc, "error:"));
+
+    append_stmt(block, code_stmt_text(alc,
+        "fprintf(stderr, \"error: cannot read file '%s'\\n\", fname);"));
+    append_stmt(block, code_stmt_text(alc, "free(buffer);"));
+    if_code = code_stmts(alc);
+    append_stmt(if_code, code_stmt_text(alc, "fclose(f);"));
+    append_stmt(block, code_stmt_if_then_else(alc, "f != NULL", if_code, NULL, false));
+    append_stmt(block, code_stmt_text(alc, "return NULL;"));
+
+    append_stmt(code, code_block(alc, block, CodeBlock::WRAPPED));
+
+    return code_block(alc, code, CodeBlock::RAW);
 }
 
-void emit_start(Output &o, size_t maxfill, size_t maxnmatch, const std::string &name,
-    size_t sizeof_key, size_t def, bool backup, bool accept, bool oldstyle_ctxmarker,
-    const std::set<std::string> &stagnames, const std::set<std::string> &stagvars,
-    const std::set<std::string> &mtagnames, const std::set<std::string> &mtagvars,
-    bitmaps_t &bitmaps)
+static void emit_skeleton_defines(Output &output, CodeStmts *code, const DFA &dfa)
 {
-    const opt_t *opts = o.block().opts;
+    const opt_t *opts = output.block().opts;
+    code_alc_t &alc = output.allocator;
+    Scratchbuf &o = output.scratchbuf;
     const size_t sizeof_cunit = opts->encoding.szCodeUnit();
-    const uint64_t norule = rule2key(Rule::NONE, sizeof_key, def);
+
+    append_stmt(code, code_stmt_textraw(alc, ""));
+
+    o.cstr("#define YYCTYPE ");
+    exact_uint(o, sizeof_cunit);
+    append_stmt(code, code_stmt_textraw(alc, o.flush()));
+
+    o.cstr("#define YYKEYTYPE ");
+    exact_uint(o, dfa.key_size);
+    append_stmt(code, code_stmt_textraw(alc, o.flush()));
+
+    append_stmt(code, code_stmt_textraw(alc, "#define YYPEEK() *cursor"));
+    append_stmt(code, code_stmt_textraw(alc, "#define YYSKIP() ++cursor"));
+
+    if (dfa.need_backup) {
+        append_stmt(code, code_stmt_textraw(alc, "#define YYBACKUP() marker = cursor"));
+        append_stmt(code, code_stmt_textraw(alc, "#define YYRESTORE() cursor = marker"));
+    }
+    if (dfa.oldstyle_ctxmarker) {
+        append_stmt(code,
+            code_stmt_textraw(alc, "#define YYBACKUPCTX() ctxmarker = cursor"));
+        append_stmt(code,
+            code_stmt_textraw(alc, "#define YYRESTORECTX() cursor = ctxmarker"));
+    }
+    if (opts->tags) {
+        append_stmt(code, code_stmt_textraw(alc, "#define YYSTAGP(t) t = cursor"));
+        append_stmt(code, code_stmt_textraw(alc, "#define YYSTAGN(t) t = NULL"));
+        append_stmt(code,
+            code_stmt_textraw(alc, "#define YYMTAGP(t) yymtag(&t, cursor, &yytp)"));
+        append_stmt(code,
+            code_stmt_textraw(alc, "#define YYMTAGN(t) yymtag(&t, NULL, &yytp)"));
+        append_stmt(code, code_stmt_textraw(alc, "#define YYRESTORETAG(t) cursor = t"));
+        if (opts->stadfa) {
+            append_stmt(code,
+                code_stmt_textraw(alc, "#define YYSTAGPD(t) t = cursor - 1"));
+            append_stmt(code, code_stmt_textraw(alc,
+                "#define YYMTAGPD(t) yymtag(&t, cursor - 1, &yytp)"));
+        }
+    }
+    append_stmt(code,
+        code_stmt_textraw(alc, "#define YYLESSTHAN(n) (limit - cursor) < n"));
+    append_stmt(code, code_stmt_textraw(alc, "#define YYFILL(n) { break; }"));
+    append_stmt(code, code_stmt_textraw(alc, ""));
+}
+
+static void emit_skeleton_function_action(Output &output, CodeStmts *code, const DFA &dfa)
+{
+    code_alc_t &alc = output.allocator;
+    Scratchbuf &o = output.scratchbuf;
+    const uint64_t norule = rule2key(Rule::NONE, dfa.key_size, dfa.def_rule);
+
+    o.cstr("static int action_").str(dfa.name);
+    append_stmt(code, code_stmt_text(alc, o.flush()));
+
+    CodeStmts *params = code_stmts(alc);
+    append_stmt(params, code_stmt_text(alc, "( unsigned *pkix"));
+    append_stmt(params, code_stmt_text(alc, ", const YYKEYTYPE *keys"));
+    append_stmt(params, code_stmt_text(alc, ", const YYCTYPE *start"));
+    append_stmt(params, code_stmt_text(alc, ", const YYCTYPE *token"));
+    append_stmt(params, code_stmt_text(alc, ", const YYCTYPE **cursor"));
+    append_stmt(params, code_stmt_text(alc, ", YYKEYTYPE rule_act"));
+    append_stmt(params, code_stmt_text(alc, ")"));
+    append_stmt(code, code_block(alc, params, CodeBlock::INDENTED));
+
+    CodeStmts *body = code_stmts(alc);
+
+    append_stmt(body, code_stmt_text(alc, "const unsigned kix = *pkix;"));
+    append_stmt(body, code_stmt_text(alc, "const long pos = token - start;"));
+    append_stmt(body, code_stmt_text(alc, "const long len_act = *cursor - token;"));
+    append_stmt(body, code_stmt_text(alc, "const long len_exp = (long) keys[kix + 1];"));
+    append_stmt(body, code_stmt_text(alc, "const YYKEYTYPE rule_exp = keys[kix + 2];"));
+    append_stmt(body, code_stmt_text(alc, "*pkix = kix + 3;"));
+
+    o.cstr("rule_exp == ").u64(norule);
+    CodeText if1_cond = o.flush();
+
+    CodeStmts *if1_code = code_stmts(alc);
+    append_stmt(if1_code, code_stmt_text(alc, "fprintf"));
+
+    CodeStmts *args1 = code_stmts(alc);
+    append_stmt(args1, code_stmt_text(alc, "( stderr"));
+    o.cstr(", \"warning: lex_").str(dfa.name)
+        .cstr(": control flow is undefined for input\"");
+    append_stmt(args1, code_stmt_text(alc, o.flush()));
+    CodeStmts *hang1 = code_stmts(alc);
+    append_stmt(hang1, code_stmt_text(alc,
+        "\" at position %ld, rerun re2c with '-W'\\n\""));
+    append_stmt(args1, code_block(alc, hang1, CodeBlock::INDENTED));
+    append_stmt(args1, code_stmt_text(alc, ", pos"));
+    append_stmt(args1, code_stmt_text(alc, ");"));
+    append_stmt(if1_code, code_block(alc, args1, CodeBlock::INDENTED));
+
+    append_stmt(body, code_stmt_if_then_else(alc, if1_cond, if1_code, NULL));
+
+    CodeText if2_cond = "len_act == len_exp && rule_act == rule_exp";
+
+    CodeStmts *if2_code = code_stmts(alc);
+    append_stmt(if2_code, code_stmt_text(alc, "const YYKEYTYPE offset = keys[kix];"));
+    append_stmt(if2_code, code_stmt_text(alc, "*cursor = token + offset;"));
+    append_stmt(if2_code, code_stmt_text(alc, "return 0;"));
+
+    CodeStmts *else2_code = code_stmts(alc);
+    append_stmt(else2_code, code_stmt_text(alc, "fprintf"));
+
+    CodeStmts *args2 = code_stmts(alc);
+    append_stmt(args2, code_stmt_text(alc, "( stderr"));
+    o.cstr(", \"error: lex_").str(dfa.name).cstr(": at position %ld (key %u):\\n\"");
+    append_stmt(args2, code_stmt_text(alc, o.flush()));
+    CodeStmts *hang2 = code_stmts(alc);
+    append_stmt(hang2, code_stmt_text(alc,
+        "\"\\texpected: match length %ld, rule %u\\n\""));
+    append_stmt(hang2, code_stmt_text(alc,
+        "\"\\tactual:   match length %ld, rule %u\\n\""));
+    append_stmt(args2, code_block(alc, hang2, CodeBlock::INDENTED));
+    append_stmt(args2, code_stmt_text(alc, ", pos"));
+    append_stmt(args2, code_stmt_text(alc, ", kix"));
+    append_stmt(args2, code_stmt_text(alc, ", len_exp"));
+    append_stmt(args2, code_stmt_text(alc, ", rule_exp"));
+    append_stmt(args2, code_stmt_text(alc, ", len_act"));
+    append_stmt(args2, code_stmt_text(alc, ", rule_act"));
+    append_stmt(args2, code_stmt_text(alc, ");"));
+    append_stmt(else2_code, code_block(alc, args2, CodeBlock::INDENTED));
+
+    append_stmt(else2_code, code_stmt_text(alc, "return 1;"));
+
+    append_stmt(body, code_stmt_if_then_else(alc, if2_cond, if2_code, else2_code));
+
+    append_stmt(code, code_block(alc, body, CodeBlock::WRAPPED));
+}
+
+static void emit_skeleton_stags(Output &output, CodeStmts *code, const DFA &dfa)
+{
+    if (dfa.stagnames.empty()) return;
+
+    code_alc_t &alc = output.allocator;
+    Scratchbuf &o = output.scratchbuf;
+
+    append_stmt(code, code_stmt_textraw(alc, ""));
+
+    o.cstr("static int check_stag_").str(dfa.name)
+        .cstr("(unsigned *pkix, YYKEYTYPE *keys, const YYCTYPE *tag,");
+    append_stmt(code, code_stmt_text(alc, o.flush()));
+    CodeStmts *params = code_stmts(alc);
+    append_stmt(params, code_stmt_text(alc,
+        "const YYCTYPE *input, const YYCTYPE *token, const char *name)"));
+    append_stmt(code, code_block(alc, params, CodeBlock::INDENTED));
+
+    CodeStmts *body = code_stmts(alc);
+
+    append_stmt(body, code_stmt_text(alc, "const unsigned kix = *pkix;"));
+    append_stmt(body, code_stmt_text(alc, "const YYKEYTYPE"));
+    CodeStmts *block1 = code_stmts(alc);
+    append_stmt(block1, code_stmt_text(alc, "exp = keys[kix],"));
+    append_stmt(block1, code_stmt_text(alc, "act = (YYKEYTYPE)(tag - token),"));
+    append_stmt(block1, code_stmt_text(alc, "NIL = (YYKEYTYPE)~0u;"));
+    append_stmt(body, code_block(alc, block1, CodeBlock::INDENTED));
+
+    append_stmt(body, code_stmt_text(alc, "*pkix = kix + 1;"));
+    append_stmt(body, code_stmt_textraw(alc, ""));
+
+    CodeText if_cond = "exp == act || (exp == NIL && tag == NULL)";
+    CodeStmts *if_code = code_stmts(alc);
+    append_stmt(if_code, code_stmt_text(alc, "return 0;"));
+    append_stmt(body, code_stmt_if_then_else(alc, if_cond, if_code, NULL));
+
+    append_stmt(body, code_stmt_textraw(alc, ""));
+
+    o.cstr("fprintf(stderr, \"error: lex_").str(dfa.name)
+        .cstr(": at position %ld, key %u: \"");
+    append_stmt(body, code_stmt_text(alc, o.flush()));
+    CodeStmts *args = code_stmts(alc);
+    append_stmt(args, code_stmt_text(alc,
+        "\"wrong value for tag '%s': expected %u, actual %u\\n\","));
+    append_stmt(args, code_stmt_text(alc,
+        "token - input, kix, name, exp, act);"));
+    append_stmt(body, code_block(alc, args, CodeBlock::INDENTED));
+
+    append_stmt(body, code_stmt_text(alc, "return 1;"));
+
+    append_stmt(code, code_block(alc, body, CodeBlock::WRAPPED));
+}
+
+static void emit_skeleton_mtags(Output &output, CodeStmts *code, const DFA &dfa)
+{
+    if (dfa.mtagnames.empty()) return;
+
+    code_alc_t &alc = output.allocator;
+    Scratchbuf &o = output.scratchbuf;
+    CodeStmts *block;
+
+    append_stmt(code, code_stmt_textraw(alc, ""));
+
+    append_stmt(code, code_stmt_text(alc, "typedef struct yymtag_t {"));
+    block = code_stmts(alc);
+    append_stmt(block, code_stmt_text(alc, "ptrdiff_t pred;"));
+    append_stmt(block, code_stmt_text(alc, "const YYCTYPE *elem;"));
+    append_stmt(code, code_block(alc, block, CodeBlock::INDENTED));
+    append_stmt(code, code_stmt_text(alc, "} yymtag_t;"));
+
+    append_stmt(code, code_stmt_textraw(alc, ""));
+
+    append_stmt(code, code_stmt_text(alc, "typedef struct yymtagpool_t {"));
+    block = code_stmts(alc);
+    append_stmt(block, code_stmt_text(alc, "yymtag_t *head;"));
+    append_stmt(block, code_stmt_text(alc, "yymtag_t *next;"));
+    append_stmt(block, code_stmt_text(alc, "yymtag_t *last;"));
+    append_stmt(code, code_block(alc, block, CodeBlock::INDENTED));
+    append_stmt(code, code_stmt_text(alc, "} yymtagpool_t;"));
+
+    append_stmt(code, code_stmt_textraw(alc, ""));
+
+    append_stmt(code,
+        code_stmt_text(alc, "static void yymtagpool_clear(yymtagpool_t *tp)"));
+    block = code_stmts(alc);
+    append_stmt(block, code_stmt_text(alc, "tp->next = tp->head;"));
+    append_stmt(code, code_block(alc, block, CodeBlock::WRAPPED));
+
+    append_stmt(code, code_stmt_textraw(alc, ""));
+    append_stmt(code,
+        code_stmt_text(alc, "static void yymtagpool_init(yymtagpool_t *tp)"));
+    block = code_stmts(alc);
+    append_stmt(block, code_stmt_text(alc, "static const unsigned size = 4096;"));
+    append_stmt(block,
+        code_stmt_text(alc, "tp->head = (yymtag_t*)malloc(size * sizeof(yymtag_t));"));
+    append_stmt(block, code_stmt_text(alc, "tp->next = tp->head;"));
+    append_stmt(block, code_stmt_text(alc, "tp->last = tp->head + size;"));
+    append_stmt(code, code_block(alc, block, CodeBlock::WRAPPED));
+
+    append_stmt(code, code_stmt_textraw(alc, ""));
+
+    append_stmt(code,
+        code_stmt_text(alc, "static void yymtagpool_free(yymtagpool_t *tp)"));
+    block = code_stmts(alc);
+    append_stmt(block, code_stmt_text(alc, "free(tp->head);"));
+    append_stmt(block, code_stmt_text(alc, "tp->head = tp->next = tp->last = NULL;"));
+    append_stmt(code, code_block(alc, block, CodeBlock::WRAPPED));
+
+    append_stmt(code, code_stmt_textraw(alc, ""));
+
+    append_stmt(code, code_stmt_text(alc,
+        "static yymtag_t *yymtagpool_next(yymtagpool_t *tp)"));
+    block = code_stmts(alc);
+    CodeText if_cond = "tp->next == tp->last";
+    CodeStmts *if_code = code_stmts(alc);
+    append_stmt(if_code, code_stmt_text(alc,
+        "const unsigned size = tp->last - tp->head;"));
+    append_stmt(if_code, code_stmt_text(alc,
+        "yymtag_t *head = (yymtag_t*)malloc(2 * size * sizeof(yymtag_t));"));
+    append_stmt(if_code, code_stmt_text(alc,
+        "memcpy(head, tp->head, size * sizeof(yymtag_t));"));
+    append_stmt(if_code, code_stmt_text(alc, "free(tp->head);"));
+    append_stmt(if_code, code_stmt_text(alc, "tp->head = head;"));
+    append_stmt(if_code, code_stmt_text(alc, "tp->next = head + size;"));
+    append_stmt(if_code, code_stmt_text(alc, "tp->last = head + size * 2;"));
+    append_stmt(block, code_stmt_if_then_else(alc, if_cond, if_code, NULL));
+    append_stmt(block, code_stmt_text(alc, "return tp->next++;"));
+    append_stmt(code, code_block(alc, block, CodeBlock::WRAPPED));
+
+    append_stmt(code, code_stmt_textraw(alc, ""));
+
+    append_stmt(code, code_stmt_text(alc,
+        "static void yymtag(ptrdiff_t *pt, const YYCTYPE *t, yymtagpool_t *tp)"));
+    block = code_stmts(alc);
+    append_stmt(block, code_stmt_text(alc, "yymtag_t *n = yymtagpool_next(tp);"));
+    append_stmt(block, code_stmt_text(alc, "n->pred = *pt;"));
+    append_stmt(block, code_stmt_text(alc, "n->elem = t;"));
+    append_stmt(block, code_stmt_text(alc, "*pt = n - tp->head;"));
+    append_stmt(code, code_block(alc, block, CodeBlock::WRAPPED));
+
+    append_stmt(code, code_stmt_textraw(alc, ""));
+
+    o.cstr("static int check_mtag_").str(dfa.name)
+        .cstr("(unsigned *pkix, YYKEYTYPE *keys, const yymtagpool_t *tp, ptrdiff_t mtag,");
+    append_stmt(code, code_stmt_text(alc, o.flush()));
+    CodeStmts *params = code_stmts(alc);
+    append_stmt(params, code_stmt_text(alc,
+        "const YYCTYPE *input, const YYCTYPE *token, const char *name)"));
+    append_stmt(code, code_block(alc, params, CodeBlock::INDENTED));
+
+    CodeStmts *body = code_stmts(alc);
+    append_stmt(body, code_stmt_text(alc, "const unsigned kix = *pkix;"));
+    append_stmt(body, code_stmt_text(alc, "YYKEYTYPE n = keys[kix];"));
+    append_stmt(body, code_stmt_text(alc, "*pkix = kix + n + 1;"));
+
+    o.cstr("for (; n > 0; --n) {");
+    append_stmt(body, code_stmt_text(alc, o.flush()));
+
+    CodeStmts *block1 = code_stmts(alc); // for loop
+
+    CodeText if1_cond = "mtag == -1";
+    CodeStmts *if1_code = code_stmts(alc);
+    o.cstr("fprintf(stderr, \"error: lex_").str(dfa.name)
+        .cstr(": at position %ld, key %u: \"");
+    append_stmt(if1_code, code_stmt_text(alc, o.flush()));
+    CodeStmts *args1 = code_stmts(alc);
+    append_stmt(args1, code_stmt_text(alc, "\"history for tag '%s' is too short\\n\","));
+    append_stmt(args1, code_stmt_text(alc, "token - input, kix + n, name);"));
+    append_stmt(if1_code, code_block(alc, args1, CodeBlock::INDENTED));
+    append_stmt(if1_code, code_stmt_text(alc, "return 1;"));
+    append_stmt(block1, code_stmt_if_then_else(alc, if1_cond, if1_code, NULL));
+
+    append_stmt(block1, code_stmt_text(alc,
+        "const YYCTYPE *tag = (tp->head + mtag)->elem;"));
+    append_stmt(block1, code_stmt_text(alc, "mtag = (tp->head + mtag)->pred;"));
+
+    append_stmt(block1, code_stmt_text(alc, "const YYKEYTYPE"));
+    CodeStmts *hang1 = code_stmts(alc);
+    append_stmt(hang1, code_stmt_text(alc, "exp = keys[kix + n],"));
+    append_stmt(hang1, code_stmt_text(alc, "act = (YYKEYTYPE)(tag - token),"));
+    append_stmt(hang1, code_stmt_text(alc, "NIL = (YYKEYTYPE)~0u;"));
+    append_stmt(block1, code_block(alc, hang1, CodeBlock::INDENTED));
+
+    CodeText if2_cond = "!(exp == act || (exp == NIL && tag == NULL))";
+    CodeStmts *if2_code = code_stmts(alc);
+    o.cstr("fprintf(stderr, \"error: lex_").str(dfa.name)
+        .cstr(": at position %ld, key %u: \"");
+    append_stmt(if2_code, code_stmt_text(alc, o.flush()));
+    CodeStmts *args2 = code_stmts(alc);
+    append_stmt(args2, code_stmt_text(alc,
+        "\"wrong value for tag '%s': expected %u, actual %u\\n\","));
+    append_stmt(args2, code_stmt_text(alc, "token - input, kix + n, name, exp, act);"));
+    append_stmt(if2_code, code_block(alc, args2, CodeBlock::INDENTED));
+    append_stmt(if2_code, code_stmt_text(alc, "return 1;"));
+    append_stmt(block1, code_stmt_if_then_else(alc, if2_cond, if2_code, NULL));
+
+    append_stmt(body, code_block(alc, block1, CodeBlock::INDENTED));
+    append_stmt(body, code_stmt_text(alc, "}")); // end of for loop
+
+    CodeText if3_cond = "mtag != -1";
+    CodeStmts *if3_code = code_stmts(alc);
+    o.cstr("fprintf(stderr, \"error: lex_").str(dfa.name)
+        .cstr(": at position %ld, key %u: \"");
+    append_stmt(if3_code, code_stmt_text(alc, o.flush()));
+    CodeStmts *args3 = code_stmts(alc);
+    append_stmt(args3, code_stmt_text(alc, "\"history for tag '%s' is too long\\n\","));
+    append_stmt(args3, code_stmt_text(alc, "token - input, kix, name);"));
+    append_stmt(if3_code, code_block(alc, args3, CodeBlock::INDENTED));
+    append_stmt(if3_code, code_stmt_text(alc, "return 1;"));
+    append_stmt(body, code_stmt_if_then_else(alc, if3_cond, if3_code, NULL));
+
+    append_stmt(body, code_stmt_text(alc, "return 0;"));
+
+    append_stmt(code, code_block(alc, body, CodeBlock::WRAPPED));
+}
+
+void emit_skeleton(Output &output, CodeStmts *code, DFA &dfa)
+{
+    const opt_t *opts = output.block().opts;
+    code_alc_t &alc = output.allocator;
+    Scratchbuf &o = output.scratchbuf;
+    const size_t sizeof_cunit = opts->encoding.szCodeUnit();
+    std::set<std::string>::const_iterator var1, var2;
+    CodeStmts *block, *block2, *args, *if_code;
+    CodeText if_cond;
+
     std::string filename = opts->output_file;
     if (filename.empty()) {
         filename = "<stdout>";
     }
 
-    o.ws("\n#define YYCTYPE ");
-    exact_uint (o, sizeof_cunit);
-    o.ws("\n#define YYKEYTYPE ");
-    exact_uint (o, sizeof_key);
-    o.ws("\n#define YYPEEK() *cursor");
-    o.ws("\n#define YYSKIP() ++cursor");
-    if (backup) {
-        o.ws("\n#define YYBACKUP() marker = cursor");
-        o.ws("\n#define YYRESTORE() cursor = marker");
-    }
-    if (oldstyle_ctxmarker) {
-        o.ws("\n#define YYBACKUPCTX() ctxmarker = cursor");
-        o.ws("\n#define YYRESTORECTX() cursor = ctxmarker");
-    }
-    if (opts->tags) {
-        o.ws("\n#define YYSTAGP(t) t = cursor");
-        o.ws("\n#define YYSTAGN(t) t = NULL");
-        o.ws("\n#define YYMTAGP(t) yymtag(&t, cursor, &yytp)");
-        o.ws("\n#define YYMTAGN(t) yymtag(&t, NULL, &yytp)");
-        o.ws("\n#define YYRESTORETAG(t) cursor = t");
-        if (opts->stadfa) {
-             o.ws("\n#define YYSTAGPD(t) t = cursor - 1");
-             o.ws("\n#define YYMTAGPD(t) yymtag(&t, cursor - 1, &yytp)");
-        }
-    }
-    o.ws("\n#define YYLESSTHAN(n) (limit - cursor) < n");
-    o.ws("\n#define YYFILL(n) { break; }");
-    o.ws("\n");
+    emit_skeleton_defines(output, code, dfa);
+    emit_skeleton_function_action(output, code, dfa);
+    emit_skeleton_stags(output, code, dfa);
+    emit_skeleton_mtags(output, code, dfa);
 
-    o.ws("\nstatic int action_").wstring(name);
-    o.ws("\n").wind(1).ws("( unsigned *pkix");
-    o.ws("\n").wind(1).ws(", const YYKEYTYPE *keys");
-    o.ws("\n").wind(1).ws(", const YYCTYPE *start");
-    o.ws("\n").wind(1).ws(", const YYCTYPE *token");
-    o.ws("\n").wind(1).ws(", const YYCTYPE **cursor");
-    o.ws("\n").wind(1).ws(", YYKEYTYPE rule_act");
-    o.ws("\n").wind(1).ws(")");
-    o.ws("\n{");
-    o.ws("\n").wind(1).ws("const unsigned kix = *pkix;");
-    o.ws("\n").wind(1).ws("const long pos = token - start;");
-    o.ws("\n").wind(1).ws("const long len_act = *cursor - token;");
-    o.ws("\n").wind(1).ws("const long len_exp = (long) keys[kix + 1];");
-    o.ws("\n").wind(1).ws("const YYKEYTYPE rule_exp = keys[kix + 2];");
-    o.ws("\n").wind(1).ws("*pkix = kix + 3;");
-    o.ws("\n").wind(1).ws("if (rule_exp == ").wu64(norule).ws(") {");
-    o.ws("\n").wind(2).ws("fprintf");
-    o.ws("\n").wind(3).ws("( stderr");
-    o.ws("\n").wind(3).ws(", \"warning: lex_").wstring(name).ws(": control flow is undefined for input\"");
-    o.ws("\n").wind(4).ws("\" at position %ld, rerun re2c with '-W'\\n\"");
-    o.ws("\n").wind(3).ws(", pos");
-    o.ws("\n").wind(3).ws(");");
-    o.ws("\n").wind(1).ws("}");
-    o.ws("\n").wind(1).ws("if (len_act == len_exp && rule_act == rule_exp) {");
-    o.ws("\n").wind(2).ws("const YYKEYTYPE offset = keys[kix];");
-    o.ws("\n").wind(2).ws("*cursor = token + offset;");
-    o.ws("\n").wind(2).ws("return 0;");
-    o.ws("\n").wind(1).ws("} else {");
-    o.ws("\n").wind(2).ws("fprintf");
-    o.ws("\n").wind(3).ws("( stderr");
-    o.ws("\n").wind(3).ws(", \"error: lex_").wstring(name).ws(": at position %ld (key %u):\\n\"");
-    o.ws("\n").wind(4).ws("\"\\texpected: match length %ld, rule %u\\n\"");
-    o.ws("\n").wind(4).ws("\"\\tactual:   match length %ld, rule %u\\n\"");
-    o.ws("\n").wind(3).ws(", pos");
-    o.ws("\n").wind(3).ws(", kix");
-    o.ws("\n").wind(3).ws(", len_exp");
-    o.ws("\n").wind(3).ws(", rule_exp");
-    o.ws("\n").wind(3).ws(", len_act");
-    o.ws("\n").wind(3).ws(", rule_act");
-    o.ws("\n").wind(3).ws(");");
-    o.ws("\n").wind(2).ws("return 1;");
-    o.ws("\n").wind(1).ws("}");
-    o.ws("\n}");
+    append_stmt(code, code_stmt_textraw(alc, ""));
 
-    if (!stagnames.empty()) {
-        o.ws("\n");
-        o.ws("\nstatic int check_stag_").wstring(name)
-            .ws("(unsigned *pkix, YYKEYTYPE *keys, const YYCTYPE *tag,\n")
-            .wind(1).ws("const YYCTYPE *input, const YYCTYPE *token, const char *name)");
-        o.ws("\n{");
-        o.ws("\n").wind(1).ws("const unsigned kix = *pkix;");
-        o.ws("\n").wind(1).ws("const YYKEYTYPE\n")
-            .wind(2).ws("exp = keys[kix],\n")
-            .wind(2).ws("act = (YYKEYTYPE)(tag - token),\n")
-            .wind(2).ws("NIL = (YYKEYTYPE)~0u;");
-        o.ws("\n").wind(1).ws("*pkix = kix + 1;");
-        o.ws("\n");
-        o.ws("\n").wind(1).ws("if (exp == act || (exp == NIL && tag == NULL)) return 0;");
-        o.ws("\n");
-        o.ws("\n").wind(1).ws("fprintf(stderr, \"error: lex_").wstring(name).ws(": at position %ld, key %u: \"")
-            .ws("\n").wind(2).ws("\"wrong value for tag '%s': expected %u, actual %u\\n\",")
-            .ws("\n").wind(2).ws("token - input, kix, name, exp, act);");
-        o.ws("\n").wind(1).ws("return 1;");
-        o.ws("\n}");
-    }
+    o.cstr("static int check_key_count_").str(dfa.name)
+        .cstr("(unsigned have, unsigned used, unsigned need)");
+    append_stmt(code, code_stmt_text(alc, o.flush()));
+    block = code_stmts(alc);
+    if_cond = "used + need <= have";
+    if_code = code_stmts(alc);
+    append_stmt(if_code, code_stmt_text(alc, "return 0;"));
+    append_stmt(block, code_stmt_if_then_else(alc, if_cond, if_code, NULL));
+    o.cstr("fprintf(stderr, \"error: lex_").str(dfa.name)
+        .cstr(": not enough keys\\n\");");
+    append_stmt(block, code_stmt_text(alc, o.flush()));
+    append_stmt(block, code_stmt_text(alc, "return 1;"));
+    append_stmt(code, code_block(alc, block, CodeBlock::WRAPPED));
 
-    if (!mtagnames.empty()) {
-        o.ws("\n");
-        o.ws("\ntypedef struct yymtag_t {");
-        o.ws("\n").wind(1).ws("ptrdiff_t pred;");
-        o.ws("\n").wind(1).ws("const YYCTYPE *elem;");
-        o.ws("\n} yymtag_t;");
+    append_stmt(code, code_stmt_textraw(alc, ""));
 
-        o.ws("\n");
-        o.ws("\ntypedef struct yymtagpool_t {");
-        o.ws("\n").wind(1).ws("yymtag_t *head;");
-        o.ws("\n").wind(1).ws("yymtag_t *next;");
-        o.ws("\n").wind(1).ws("yymtag_t *last;");
-        o.ws("\n} yymtagpool_t;");
-
-        o.ws("\n");
-        o.ws("\nstatic void yymtagpool_clear(yymtagpool_t *tp)");
-        o.ws("\n{");
-        o.ws("\n").wind(1).ws("tp->next = tp->head;");
-        o.ws("\n}");
-
-        o.ws("\n");
-        o.ws("\nstatic void yymtagpool_init(yymtagpool_t *tp)");
-        o.ws("\n{");
-        o.ws("\n").wind(1).ws("static const unsigned size = 4096;");
-        o.ws("\n").wind(1).ws("tp->head = (yymtag_t*)malloc(size * sizeof(yymtag_t));");
-        o.ws("\n").wind(1).ws("tp->next = tp->head;");
-        o.ws("\n").wind(1).ws("tp->last = tp->head + size;");
-        o.ws("\n}");
-
-        o.ws("\n");
-        o.ws("\nstatic void yymtagpool_free(yymtagpool_t *tp)");
-        o.ws("\n{");
-        o.ws("\n").wind(1).ws("free(tp->head);");
-        o.ws("\n").wind(1).ws("tp->head = tp->next = tp->last = NULL;");
-        o.ws("\n}");
-
-        o.ws("\n");
-        o.ws("\nstatic yymtag_t *yymtagpool_next(yymtagpool_t *tp)");
-        o.ws("\n{");
-        o.ws("\n").wind(1).ws("if (tp->next == tp->last) {");
-        o.ws("\n").wind(2).ws("const unsigned size = tp->last - tp->head;");
-        o.ws("\n").wind(2).ws("yymtag_t *head = (yymtag_t*)malloc(2 * size * sizeof(yymtag_t));");
-        o.ws("\n").wind(2).ws("memcpy(head, tp->head, size * sizeof(yymtag_t));");
-        o.ws("\n").wind(2).ws("free(tp->head);");
-        o.ws("\n").wind(2).ws("tp->head = head;");
-        o.ws("\n").wind(2).ws("tp->next = head + size;");
-        o.ws("\n").wind(2).ws("tp->last = head + size * 2;");
-        o.ws("\n").wind(1).ws("}");
-        o.ws("\n").wind(1).ws("return tp->next++;");
-        o.ws("\n}");
-
-        o.ws("\n");
-        o.ws("\nstatic void yymtag(ptrdiff_t *pt, const YYCTYPE *t, yymtagpool_t *tp)");
-        o.ws("\n{");
-        o.ws("\n").wind(1).ws("yymtag_t *n = yymtagpool_next(tp);");
-        o.ws("\n").wind(1).ws("n->pred = *pt;");
-        o.ws("\n").wind(1).ws("n->elem = t;");
-        o.ws("\n").wind(1).ws("*pt = n - tp->head;");
-        o.ws("\n}");
-
-        o.ws("\n");
-        o.ws("\nstatic int check_mtag_").wstring(name)
-            .ws("(unsigned *pkix, YYKEYTYPE *keys, const yymtagpool_t *tp, ptrdiff_t mtag,\n")
-            .wind(1).ws("const YYCTYPE *input, const YYCTYPE *token, const char *name)");
-        o.ws("\n{");
-//        o.ws("\n").wind(1).ws("check_key_count_").wstring(name).ws("(1) && return 1;");
-        o.ws("\n").wind(1).ws("const unsigned kix = *pkix;");
-        o.ws("\n").wind(1).ws("YYKEYTYPE n = keys[kix];");
-        o.ws("\n").wind(1).ws("*pkix = kix + n + 1;");
-//        o.ws("\n").wind(1).ws("check_key_count_").wstring(name).ws("(n) && return 1;");
-        o.ws("\n").wind(1).ws("for (; n > 0; --n) {");
-        o.ws("\n").wind(2).ws("if (mtag == -1) {");
-        o.ws("\n").wind(3).ws("fprintf(stderr, \"error: lex_").wstring(name).ws(": at position %ld, key %u: \"")
-            .ws("\n").wind(4).ws("\"history for tag '%s' is too short\\n\",")
-            .ws("\n").wind(4).ws("token - input, kix + n, name);");
-        o.ws("\n").wind(3).ws("return 1;");
-        o.ws("\n").wind(2).ws("}");
-        o.ws("\n").wind(2).ws("const YYCTYPE *tag = (tp->head + mtag)->elem;");
-        o.ws("\n").wind(2).ws("mtag = (tp->head + mtag)->pred;");
-        o.ws("\n").wind(2).ws("const YYKEYTYPE\n")
-            .wind(3).ws("exp = keys[kix + n],\n")
-            .wind(3).ws("act = (YYKEYTYPE)(tag - token),\n")
-            .wind(3).ws("NIL = (YYKEYTYPE)~0u;");
-        o.ws("\n").wind(2).ws("if (!(exp == act || (exp == NIL && tag == NULL))) {");
-        o.ws("\n").wind(3).ws("fprintf(stderr, \"error: lex_").wstring(name).ws(": at position %ld, key %u: \"")
-            .ws("\n").wind(4).ws("\"wrong value for tag '%s': expected %u, actual %u\\n\",")
-            .ws("\n").wind(4).ws("token - input, kix + n, name, exp, act);");
-        o.ws("\n").wind(3).ws("return 1;");
-        o.ws("\n").wind(2).ws("}");
-        o.ws("\n").wind(1).ws("}");
-        o.ws("\n").wind(1).ws("if (mtag != -1) {");
-        o.ws("\n").wind(2).ws("fprintf(stderr, \"error: lex_").wstring(name).ws(": at position %ld, key %u: \"")
-            .ws("\n").wind(3).ws("\"history for tag '%s' is too long\\n\",")
-            .ws("\n").wind(3).ws("token - input, kix, name);");
-        o.ws("\n").wind(2).ws("return 1;");
-        o.ws("\n").wind(1).ws("}");
-        o.ws("\n").wind(1).ws("return 0;");
-        o.ws("\n}");
-    }
-
-    o.ws("\n");
-    o.ws("\nstatic int check_key_count_").wstring(name).ws("(unsigned have, unsigned used, unsigned need)");
-    o.ws("\n{");
-    o.ws("\n").wind(1).ws("if (used + need <= have) return 0;");
-    o.ws("\n").wind(1).ws("fprintf(stderr, \"error: lex_").wstring(name).ws(": not enough keys\\n\");");
-    o.ws("\n").wind(1).ws("return 1;");
-    o.ws("\n}");
-    o.ws("\n");
-
-    o.ws("\nint lex_").wstring(name).ws("()");
-    o.ws("\n{");
-    o.ws("\n").wind(1).ws("const size_t padding = ").wu64(maxfill).ws("; /* YYMAXFILL */");
-    o.ws("\n").wind(1).ws("int status = 0;");
-    o.ws("\n").wind(1).ws("size_t input_len = 0;");
-    o.ws("\n").wind(1).ws("size_t keys_count = 0;");
-    o.ws("\n").wind(1).ws("YYCTYPE *input = NULL;");
-    o.ws("\n").wind(1).ws("YYKEYTYPE *keys = NULL;");
-    o.ws("\n").wind(1).ws("const YYCTYPE *cursor = NULL;");
-    o.ws("\n").wind(1).ws("const YYCTYPE *limit = NULL;");
-    o.ws("\n").wind(1).ws("const YYCTYPE *token = NULL;");
-    o.ws("\n").wind(1).ws("const YYCTYPE *eof = NULL;");
+    o.cstr("int lex_").str(dfa.name).cstr("()");
+    append_stmt(code, code_stmt_text(alc, o.flush()));
+    block = code_stmts(alc);
+    o.cstr("const size_t padding = ").u64(dfa.max_fill).cstr("; /* YYMAXFILL */");
+    append_stmt(block, code_stmt_text(alc, o.flush()));
+    append_stmt(block, code_stmt_text(alc, "int status = 0;"));
+    append_stmt(block, code_stmt_text(alc, "size_t input_len = 0;"));
+    append_stmt(block, code_stmt_text(alc, "size_t keys_count = 0;"));
+    append_stmt(block, code_stmt_text(alc, "YYCTYPE *input = NULL;"));
+    append_stmt(block, code_stmt_text(alc, "YYKEYTYPE *keys = NULL;"));
+    append_stmt(block, code_stmt_text(alc, "const YYCTYPE *cursor = NULL;"));
+    append_stmt(block, code_stmt_text(alc, "const YYCTYPE *limit = NULL;"));
+    append_stmt(block, code_stmt_text(alc, "const YYCTYPE *token = NULL;"));
+    append_stmt(block, code_stmt_text(alc, "const YYCTYPE *eof = NULL;"));
     if (opts->posix_syntax) {
-        o.ws("\n").wind(1).ws("size_t yynmatch;");
-        o.ws("\n").wind(1).ws("const YYCTYPE *yypmatch[").wu64(maxnmatch).ws(" * 2];");
+        append_stmt(block, code_stmt_text(alc, "size_t yynmatch;"));
+        o.cstr("const YYCTYPE *yypmatch[").u64(dfa.max_nmatch).cstr(" * 2];");
+        append_stmt(block, code_stmt_text(alc, o.flush()));
     }
-    o.ws("\n").wind(1).ws("unsigned int i = 0;");
-    if (!mtagnames.empty()) {
-        o.ws("\n");
-        o.ws("\n").wind(1).ws("yymtagpool_t yytp;");
-        o.ws("\n").wind(1).ws("yymtagpool_init(&yytp);");
+    append_stmt(block, code_stmt_text(alc, "unsigned int i = 0;"));
+    if (!dfa.mtagnames.empty()) {
+        append_stmt(block, code_stmt_textraw(alc, ""));
+        append_stmt(block, code_stmt_text(alc, "yymtagpool_t yytp;"));
+        append_stmt(block, code_stmt_text(alc, "yymtagpool_init(&yytp);"));
     }
-    o.ws("\n");
-    o.ws("\n").wind(1).ws("input = (YYCTYPE *) read_file");
-    o.ws("\n").wind(2).ws("(\"").wstring(filename).ws(".").wstring(name).ws(".input\"");
-    o.ws("\n").wind(2).ws(", sizeof (YYCTYPE)");
-    o.ws("\n").wind(2).ws(", padding");
-    o.ws("\n").wind(2).ws(", &input_len");
-    o.ws("\n").wind(2).ws(");");
-    o.ws("\n").wind(1).ws("if (input == NULL) {");
-    o.ws("\n").wind(2).ws("status = 1;");
-    o.ws("\n").wind(2).ws("goto end;");
-    o.ws("\n").wind(1).ws("}");
-    o.ws("\n");
+
+    append_stmt(block, code_stmt_textraw(alc, ""));
+
+    append_stmt(block, code_stmt_text(alc, "input = (YYCTYPE *) read_file"));
+    args = code_stmts(alc);
+    o.cstr("(\"").str(filename).cstr(".").str(dfa.name).cstr(".input\"");
+    append_stmt(args, code_stmt_text(alc, o.flush()));
+    append_stmt(args, code_stmt_text(alc, ", sizeof (YYCTYPE)"));
+    append_stmt(args, code_stmt_text(alc, ", padding"));
+    append_stmt(args, code_stmt_text(alc, ", &input_len"));
+    append_stmt(args, code_stmt_text(alc, ");"));
+    append_stmt(block, code_block(alc, args, CodeBlock::INDENTED));
+    if_cond = "input == NULL";
+    if_code = code_stmts(alc);
+    append_stmt(if_code, code_stmt_text(alc, "status = 1;"));
+    append_stmt(if_code, code_stmt_text(alc, "goto end;"));
+    append_stmt(block, code_stmt_if_then_else(alc, if_cond, if_code, NULL));
+
+    append_stmt(block, code_stmt_textraw(alc, ""));
+
     if (sizeof_cunit > 1) {
-        o.ws("\n").wind(1).ws("for (i = 0; i < input_len; ++i) {");
-        from_le(o, 2, sizeof_cunit, "input[i]");
-        o.ws("\n").wind(1).ws("}");
-        o.ws("\n");
+        o.cstr("for (i = 0; i < input_len; ++i) {");
+        append_stmt(block, code_stmt_text(alc, o.flush()));
+        block2 = code_stmts(alc);
+        from_le(output, block2, "input[i]", opts->encoding.szCodeUnit());
+        append_stmt(block, code_block(alc, block2, CodeBlock::INDENTED));
+        append_stmt(block, code_stmt_text(alc, "}"));
+        append_stmt(block, code_stmt_textraw(alc, ""));
     }
-    o.ws("\n").wind(1).ws("keys = (YYKEYTYPE *) read_file");
-    o.ws("\n").wind(2).ws("(\"").wstring(filename).ws(".").wstring(name).ws(".keys\"");
-    o.ws("\n").wind(2).ws(", sizeof (YYKEYTYPE)");
-    o.ws("\n").wind(2).ws(", 0");
-    o.ws("\n").wind(2).ws(", &keys_count");
-    o.ws("\n").wind(2).ws(");");
-    o.ws("\n").wind(1).ws("if (keys == NULL) {");
-    o.ws("\n").wind(2).ws("status = 1;");
-    o.ws("\n").wind(2).ws("goto end;");
-    o.ws("\n").wind(1).ws("}");
-    o.ws("\n");
-    if (sizeof_key > 1)
-    {
-        o.ws("\n").wind(1).ws("for (i = 0; i < keys_count; ++i) {");
-        from_le(o, 2, sizeof_key, "keys[i]");
-        o.ws("\n").wind(1).ws("}");
-        o.ws("\n");
+
+    append_stmt(block, code_stmt_text(alc, "keys = (YYKEYTYPE *) read_file"));
+    args = code_stmts(alc);
+    o.cstr("(\"").str(filename).cstr(".").str(dfa.name).cstr(".keys\"");
+    append_stmt(args, code_stmt_text(alc, o.flush()));
+    append_stmt(args, code_stmt_text(alc, ", sizeof (YYKEYTYPE)"));
+    append_stmt(args, code_stmt_text(alc, ", 0"));
+    append_stmt(args, code_stmt_text(alc, ", &keys_count"));
+    append_stmt(args, code_stmt_text(alc, ");"));
+    append_stmt(block, code_block(alc, args, CodeBlock::INDENTED));
+    if_cond = "keys == NULL";
+    if_code = code_stmts(alc);
+    append_stmt(if_code, code_stmt_text(alc, "status = 1;"));
+    append_stmt(if_code, code_stmt_text(alc, "goto end;"));
+    append_stmt(block, code_stmt_if_then_else(alc, if_cond, if_code, NULL));
+
+    append_stmt(block, code_stmt_textraw(alc, ""));
+
+    if (dfa.key_size > 1) {
+        o.cstr("for (i = 0; i < keys_count; ++i) {");
+        append_stmt(block, code_stmt_text(alc, o.flush()));
+        block2 = code_stmts(alc);
+        from_le(output, block2, "keys[i]", dfa.key_size);
+        append_stmt(block, code_block(alc, block2, CodeBlock::INDENTED));
+        append_stmt(block, code_stmt_text(alc, "}"));
+        append_stmt(block, code_stmt_textraw(alc, ""));
     }
-    o.ws("\n").wind(1).ws("cursor = input;");
-    o.ws("\n").wind(1).ws("limit = input + input_len + padding;");
-    o.ws("\n").wind(1).ws("eof = input + input_len;");
-    o.ws("\n");
-    o.ws("\n").wind(1).ws("for (i = 0; status == 0 && cursor < eof && i < keys_count;) {");
-    o.ws("\n").wind(2).ws("token = cursor;");
-    if (backup) {
-        o.ws("\n").wind(2).ws("const YYCTYPE *marker = NULL;");
+
+    append_stmt(block, code_stmt_text(alc, "cursor = input;"));
+    append_stmt(block, code_stmt_text(alc, "limit = input + input_len + padding;"));
+    append_stmt(block, code_stmt_text(alc, "eof = input + input_len;"));
+
+    append_stmt(block, code_stmt_textraw(alc, ""));
+
+    append_stmt(block, code_stmt_text(alc,
+        "for (i = 0; status == 0 && cursor < eof && i < keys_count;) {"));
+    block2 = code_stmts(alc);
+    append_stmt(block2, code_stmt_text(alc, "token = cursor;"));
+    if (dfa.need_backup) {
+        append_stmt(block2, code_stmt_text(alc, "const YYCTYPE *marker = NULL;"));
     }
-    if (oldstyle_ctxmarker) {
-        o.ws("\n").wind(2).ws("const YYCTYPE *ctxmarker = NULL;");
+    if (dfa.oldstyle_ctxmarker) {
+        append_stmt(block2, code_stmt_text(alc, "const YYCTYPE *ctxmarker = NULL;"));
     }
-    o.ws("\n").wind(2).ws("YYCTYPE yych;");
-    if (accept) {
-        o.ws("\n").wind(2).ws("unsigned int yyaccept = 0;");
+    append_stmt(block2, code_stmt_text(alc, "YYCTYPE yych;"));
+    if (dfa.need_accept) {
+        append_stmt(block2, code_stmt_text(alc, "unsigned int yyaccept = 0;"));
     }
 
     // autogenerated stag variables
-    ConfTags conf("\n" + indent(2, opts->indString) + "const YYCTYPE *@@ = NULL;", "");
-    output_tags(o.stream(), 0, conf, stagnames, opts);
+    const std::string stags_fmt = "\n" + indent(2, opts->indString)
+        + "const YYCTYPE *@@ = NULL;";
+    CodeStmt *stags = code_tags(alc, stags_fmt, "", false);
+    gen_tags(o, stags, dfa.stagnames);
+    append_stmt(block2, stags);
+
     // user-defined stag variables
-    std::set<std::string>::const_iterator
-        var1 = stagvars.begin(),
-        var2 = stagvars.end();
+    var1 = dfa.stagvars.begin();
+    var2 = dfa.stagvars.end();
     if (var1 != var2) {
-        o.ws("\n").wind(2).ws("const YYCTYPE *").wstring(*var1);
+        o.cstr("const YYCTYPE *").str(*var1);
         for (++var1; var1 != var2; ++var1) {
-            o.ws(", *").wstring(*var1);
+            o.cstr(", *").str(*var1);
         }
-        o.ws(";");
+        o.cstr(";");
+        append_stmt(block2, code_stmt_text(alc, o.flush()));
     }
-    if (!mtagnames.empty()) {
-        o.ws("\n").wind(2).ws("yymtagpool_clear(&yytp);");
+
+    if (!dfa.mtagnames.empty()) {
+        append_stmt(block2, code_stmt_text(alc, "yymtagpool_clear(&yytp);"));
+
         // autogenerated mtag variables
-        conf.format = "ptrdiff_t @@ = -1;";
-        output_tags(o.stream(), 0, conf, mtagnames, opts);
+        CodeStmt *mtags = code_tags(alc, "ptrdiff_t @@ = -1;", "", true);
+        gen_tags(o, mtags, dfa.mtagnames);
+        append_stmt(block2, mtags);
+
         // user-defined mtag variables
-        var1 = mtagvars.begin();
-        var2 = mtagvars.end();
+        var1 = dfa.mtagvars.begin();
+        var2 = dfa.mtagvars.end();
         if (var1 != var2) {
-            o.ws("\n").wind(2).ws("ptrdiff_t ").wstring(*var1);
+            o.cstr("ptrdiff_t ").str(*var1);
             for (++var1; var1 != var2; ++var1) {
-                o.ws(", ").wstring(*var1);
+                o.cstr(", ").str(*var1);
             }
-            o.ws(";");
+            o.cstr(";");
+            append_stmt(block2, code_stmt_text(alc, o.flush()));
         }
     }
 
-    o.ws("\n");
-    if (opts->bFlag) {
-        bitmaps.gen(o, 2);
+    append_stmts(block2, dfa.bitmaps.gen(output));
+    append_stmt(block2, code_stmt_textraw(alc, ""));
+    dfa.emit_body(output, block2);
+    append_stmt(block2, code_stmt_textraw(alc, ""));
+
+    append_stmt(block, code_block(alc, block2, CodeBlock::INDENTED));
+    append_stmt(block, code_stmt_text(alc, "}"));
+
+    if_code = code_stmts(alc);
+
+    CodeStmts *if1_code = code_stmts(alc);
+    append_stmt(if1_code, code_stmt_text(alc, "status = 1;"));
+    append_stmt(if1_code, code_stmt_text(alc, "const long pos = token - input;"));
+    o.cstr("fprintf(stderr, \"error: lex_").str(dfa.name)
+        .cstr(": unused input strings left at position %ld\\n\", pos);");
+    append_stmt(if1_code, code_stmt_text(alc, o.flush()));
+    append_stmt(if_code,
+        code_stmt_if_then_else(alc, "cursor != eof", if1_code, NULL, false));
+
+    CodeStmts *if2_code = code_stmts(alc);
+    append_stmt(if2_code, code_stmt_text(alc, "status = 1;"));
+    o.cstr("fprintf(stderr, \"error: lex_").str(dfa.name)
+        .cstr(": unused keys left after %u keys\\n\", i);");
+    append_stmt(if2_code, code_stmt_text(alc, o.flush()));
+    append_stmt(if_code,
+        code_stmt_if_then_else(alc, "i != keys_count", if2_code, NULL, false));
+
+    append_stmt(block,
+        code_stmt_if_then_else(alc, "status == 0", if_code, NULL, false));
+
+    append_stmt(block, code_stmt_textraw(alc, ""));
+    append_stmt(block, code_stmt_textraw(alc, "end:"));
+    append_stmt(block, code_stmt_text(alc, "free(input);"));
+    append_stmt(block, code_stmt_text(alc, "free(keys);"));
+    if (!dfa.mtagnames.empty()) {
+        append_stmt(block, code_stmt_text(alc, "yymtagpool_free(&yytp);"));
     }
-    o.ws("\n");
+    append_stmt(block, code_stmt_textraw(alc, ""));
+    append_stmt(block, code_stmt_text(alc, "return status;"));
+
+    append_stmt(code, code_block(alc, block, CodeBlock::WRAPPED));
+
+    append_stmt(code, code_stmt_textraw(alc, ""));
+    append_stmt(code, code_stmt_textraw(alc, "#undef YYCTYPE"));
+    append_stmt(code, code_stmt_textraw(alc, "#undef YYKEYTYPE"));
+    append_stmt(code, code_stmt_textraw(alc, "#undef YYPEEK"));
+    append_stmt(code, code_stmt_textraw(alc, "#undef YYSKIP"));
+    if (dfa.need_backup) {
+        append_stmt(code, code_stmt_textraw(alc, "#undef YYBACKUP"));
+        append_stmt(code, code_stmt_textraw(alc, "#undef YYRESTORE"));
+    }
+    if (dfa.oldstyle_ctxmarker) {
+        append_stmt(code, code_stmt_textraw(alc, "#undef YYBACKUPCTX"));
+        append_stmt(code, code_stmt_textraw(alc, "#undef YYRESTORECTX"));
+    }
+    if (opts->tags) {
+        append_stmt(code, code_stmt_textraw(alc, "#undef YYBACKUPTAG"));
+        append_stmt(code, code_stmt_textraw(alc, "#undef YYRESTORETAG"));
+        append_stmt(code, code_stmt_textraw(alc, "#undef YYCOPYTAG"));
+    }
+    append_stmt(code, code_stmt_textraw(alc, "#undef YYLESSTHAN"));
+    append_stmt(code, code_stmt_textraw(alc, "#undef YYFILL"));
 }
 
-void emit_end(Output &o, const std::string &name, bool backup, bool oldstyle_ctxmarker,
-    const std::set<std::string> &mtagnames)
+CodeStmt *emit_skeleton_epilog(Output &output)
 {
-    o.ws("\n").wind(1).ws("}");
-    o.ws("\n").wind(1).ws("if (status == 0) {");
-    o.ws("\n").wind(2).ws("if (cursor != eof) {");
-    o.ws("\n").wind(3).ws("status = 1;");
-    o.ws("\n").wind(3).ws("const long pos = token - input;");
-    o.ws("\n").wind(3).ws("fprintf(stderr, \"error: lex_").wstring(name).ws(": unused input strings left at position %ld\\n\", pos);");
-    o.ws("\n").wind(2).ws("}");
-    o.ws("\n").wind(2).ws("if (i != keys_count) {");
-    o.ws("\n").wind(3).ws("status = 1;");
-    o.ws("\n").wind(3).ws("fprintf(stderr, \"error: lex_").wstring(name).ws(": unused keys left after %u keys\\n\", i);");
-    o.ws("\n").wind(2).ws("}");
-    o.ws("\n").wind(1).ws("}");
-    o.ws("\n");
-    o.ws("\nend:");
-    o.ws("\n").wind(1).ws("free(input);");
-    o.ws("\n").wind(1).ws("free(keys);");
-    if (!mtagnames.empty()) {
-        o.ws("\n").wind(1).ws("yymtagpool_free(&yytp);");
+    code_alc_t &alc = output.allocator;
+    Scratchbuf &o = output.scratchbuf;
+
+    CodeStmts *stmts = code_stmts(alc);
+    const std::set<std::string> &xs = output.skeletons;
+    for (std::set<std::string>::const_iterator i = xs.begin(); i != xs.end(); ++i) {
+        o.cstr("lex_").str(*i).cstr("() != 0");
+        CodeText if_cond = o.flush();
+
+        CodeStmts *if_code = code_stmts(alc);
+        append_stmt(if_code, code_stmt_text(alc, "return 1;"));
+
+        append_stmt(stmts, code_stmt_if_then_else(alc, if_cond, if_code, NULL, false));
     }
-    o.ws("\n");
-    o.ws("\n").wind(1).ws("return status;");
-    o.ws("\n}");
-    o.ws("\n");
-    o.ws("\n#undef YYCTYPE");
-    o.ws("\n#undef YYKEYTYPE");
-    o.ws("\n#undef YYPEEK");
-    o.ws("\n#undef YYSKIP");
-    if (backup) {
-        o.ws("\n#undef YYBACKUP");
-        o.ws("\n#undef YYRESTORE");
-    }
-    if (oldstyle_ctxmarker) {
-        o.ws("\n#undef YYBACKUPCTX");
-        o.ws("\n#undef YYRESTORECTX");
-    }
-    if (o.block().opts->tags) {
-        o.ws("\n#undef YYBACKUPTAG");
-        o.ws("\n#undef YYRESTORETAG");
-        o.ws("\n#undef YYCOPYTAG");
-    }
-    o.ws("\n#undef YYLESSTHAN");
-    o.ws("\n#undef YYFILL");
-    o.ws("\n");
+    append_stmt(stmts, code_stmt_text(alc, "return 0;"));
+
+    CodeStmts *main = code_stmts(alc);
+    append_stmt(main, code_stmt_text(alc, ""));
+    append_stmt(main, code_stmt_text(alc, "int main()"));
+    append_stmt(main, code_block(alc, stmts, CodeBlock::WRAPPED));
+
+    return code_block(alc, main, CodeBlock::RAW);
 }
 
-void emit_epilog(Output &o, const std::set<std::string> &names)
+void emit_skeleton_action(Output &output, CodeStmts *code, const DFA &dfa, size_t rid)
 {
-    o.ws("\n").ws("int main()");
-    o.ws("\n").ws("{");
-
-    for (std::set<std::string>::const_iterator i = names.begin(); i != names.end(); ++i) {
-        o.ws("\n").wind(1).ws("if(lex_").wstring(*i).ws("() != 0) {");
-        o.ws("\n").wind(2).ws("return 1;");
-        o.ws("\n").wind(1).ws("}");
-    }
-
-    o.ws("\n").wind(1).ws("return 0;");
-    o.ws("\n}");
-    o.ws("\n");
-}
-
-void emit_action(Output &o, uint32_t ind, const DFA &dfa, size_t rid)
-{
+    code_alc_t &alc = output.allocator;
+    Scratchbuf &o = output.scratchbuf;
     const std::string &name = dfa.name;
     const Rule &r = dfa.rules[rid];
     const uint64_t rkey = rule2key(rid, dfa.key_size, dfa.def_rule);
+
     size_t ntag = 3;
     for (size_t t = r.ltag; t < r.htag; ++t) {
         const Tag &tag = dfa.tags[t];
         if (t != r.ttag && !fictive(tag)) ++ntag;
     }
 
-    o.wind(ind).ws("status = check_key_count_").wstring(name).ws("(keys_count, i, ")
-        .wu64(ntag).ws(")\n").wind(ind + 1).ws(" || action_").wstring(name)
-        .ws("(&i, keys, input, token, &cursor, ").wu64(rkey).ws(")");
+    o.cstr("status = check_key_count_").str(dfa.name).cstr("(keys_count, i, ")
+        .u64(ntag).cstr(")");
+    append_stmt(code, code_stmt_text(alc, o.flush()));
 
+    CodeStmts *hang = code_stmts(alc);
+
+    o.cstr(" || action_").str(name).cstr("(&i, keys, input, token, &cursor, ")
+        .u64(rkey).cstr(")");
     for (size_t t = r.ltag; t < r.htag; ++t) {
         const Tag &tag = dfa.tags[t];
         if (t == r.ttag || fictive(tag)) continue;
 
+        append_stmt(hang, code_stmt_text(alc, o.flush()));
+
         const std::string tname = tag_expr(tag, false);
         if (history(tag)) {
-            o.ws("\n").wind(ind + 1).ws(" || check_mtag_").wstring(name)
-                .ws("(&i, keys, &yytp, ").wstring(tname).ws(", input, token, \"")
-                .wstring(tname).ws("\")");
+            o.cstr(" || check_mtag_").str(name).cstr("(&i, keys, &yytp, ");
         }
         else {
-            o.ws("\n").wind(ind + 1).ws(" || check_stag_").wstring(name)
-                .ws("(&i, keys, ").wstring(tname).ws(", input, token, \"")
-                .wstring(tname).ws("\")");
+            o.cstr(" || check_stag_").str(name).cstr("(&i, keys, ");
         }
+        o.str(tname).cstr(", input, token, \"").str(tname).cstr("\")");
     }
+    o.cstr(";");
+    append_stmt(hang, code_stmt_text(alc, o.flush()));
 
-    o.ws(";\n");
-    o.wind(ind).ws("continue;\n");
+    append_stmt(code, code_block(alc, hang, CodeBlock::INDENTED));
+    append_stmt(code, code_stmt_text(alc, "continue;"));
 }
 
 } // namespace re2c
