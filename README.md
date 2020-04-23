@@ -134,9 +134,23 @@ foreach ((new Lexer("843954,3948,30454")) as $offset => [$token, $value])
 
 ```
 
+TODO
+----
+
+- Add support for multiple languages in re2c, and add php as one of them.
+- Add a `--lang=<lang>` option to set the language.
+- Support the hard links re2c and re2php, and automatically set the right language.
+- Since PHP does not have a character type. Use integers instead of strings in the output for PHP.
+- Add support for the common @-syntax style meta data in doccomments. So constants with associated meta data can be defined as: `/** @re [1-9][0-9]*; */ const NUMBER = 1;`. As an alternative to the `/*!re2c NUMBER = [1-9][0-9]*; */ const NUMBER = 1;` style.
+- Add support for always returning at the end of an action. As it is unlikely the code should continue when an action has ended (for at least PHP).
+
+
 BUGS
 ----
 Please report any bugs and send feature requests to https://github.com/davekok/re2php/issues.
+
+- Setting types has no effect, but options should not be there for PHP.
+- Setting YYBUFFER currently does not work.
 
 
 AUTHORS
