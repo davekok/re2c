@@ -28,15 +28,16 @@ static void prtCh(std::ostream& o, uint32_t c, bool dot)
 {
     switch (c) {
     case '\'': o << (dot ? "'"     : "\\'"); break;
-    case '"':  o << (dot ? "\\\""  : "\"");  break;
+    case '"':  o << "\\\"";  break;
     case '\n': o << (dot ? "\\\\n" : "\\n"); break;
     case '\t': o << (dot ? "\\\\t" : "\\t"); break;
     case '\v': o << (dot ? "\\\\v" : "\\v"); break;
-    case '\b': o << (dot ? "\\\\b" : "\\b"); break;
+    case '\b': o << (dot ? "\\\\b" : "\\x08"); break;
     case '\r': o << (dot ? "\\\\r" : "\\r"); break;
     case '\f': o << (dot ? "\\\\f" : "\\f"); break;
-    case '\a': o << (dot ? "\\\\a" : "\\a"); break;
+    case '\a': o << (dot ? "\\\\a" : "\\x07"); break;
     case '\\': o << "\\\\";                  break; // both .dot and C/C++ code expect "\\"
+    case '$':  o << (dot ? "$" : "\\$");     break;
     default:   o << static_cast<char> (c);   break;
     }
 }
@@ -48,7 +49,7 @@ bool is_print(uint32_t c)
 
 void prtHex(std::ostream& o, uint32_t c, uint32_t szcunit)
 {
-    o << "0x";
+    o << "\"\\x";
 
     if (szcunit >= 4) {
         o << hex(c >> 28u) << hex(c >> 24u) << hex(c >> 20u) << hex(c >> 16u);
@@ -58,15 +59,15 @@ void prtHex(std::ostream& o, uint32_t c, uint32_t szcunit)
         o << hex(c >> 12u) << hex(c >> 8u);
     }
 
-    o << hex(c >> 4u) << hex(c);
+    o << hex(c >> 4u) << hex(c) << "\"";
 }
 
 void prtChOrHex(std::ostream& o, uint32_t c, uint32_t szcunit, bool ebcdic, bool dot)
 {
     if (!ebcdic && (is_print(c) || is_space(c))) {
-        o << '\'';
+        o << '\"';
         prtCh(o, c, dot);
-        o << '\'';
+        o << '\"';
     } else {
         prtHex(o, c, szcunit);
     }
