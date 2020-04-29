@@ -414,7 +414,7 @@ static void gen_yyaccept_def(const opt_t *opts, CodeStmt *code, bool used_yyacce
 {
     if (used_yyaccept) {
         code->kind = CodeStmt::VAR;
-        code->var.type = "unsigned int";
+        code->var.type = "";
         code->var.name = opts->yyaccept.c_str();
         code->var.init = "0";
     }
